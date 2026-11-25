@@ -73,16 +73,10 @@ class AdminController
     {
         Auth::requireAuth();
 
-        $filters = [
-            'search' => trim((string) ($_GET['q'] ?? '')),
-            'status' => trim((string) ($_GET['status'] ?? '')),
-            'tujuan' => trim((string) ($_GET['tujuan'] ?? '')),
-            'date_from' => trim((string) ($_GET['from'] ?? '')),
-            'date_to' => trim((string) ($_GET['to'] ?? '')),
-        ];
+        $filters = $this->extractFilters();
 
         $page = max(1, (int) ($_GET['page'] ?? 1));
-        $perPage = 15;
+        $perPage = 10;
 
         $stats = $this->guests->getDashboardStats();
         $totalRows = $this->guests->countFiltered($filters);
@@ -90,6 +84,7 @@ class AdminController
         $page = min($page, $totalPages);
         $offset = ($page - 1) * $perPage;
         $guestList = $this->guests->listFiltered($filters, $perPage, $offset);
+        $latestGuest = $this->guests->getLatestGuestToday();
 
         $tujuanList = $this->config['tujuan_list'];
         $adminUser = Auth::user();
@@ -98,6 +93,75 @@ class AdminController
         $flashError = Helpers::flash('error');
 
         require dirname(__DIR__, 2) . '/views/admin/dashboard.php';
+    }
+
+    public function poll(): void
+    {
+        if (!Auth::check()) {
+            Helpers::json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $filters = $this->extractFilters();
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = 10;
+
+        $stats = $this->guests->getDashboardStats();
+        $totalRows = $this->guests->countFiltered($filters);
+        $totalPages = max(1, (int) ceil($totalRows / $perPage));
+        $page = min($page, $totalPages);
+        $offset = ($page - 1) * $perPage;
+        $guestList = $this->guests->listFiltered($filters, $perPage, $offset);
+        $latestGuest = $this->guests->getLatestGuestToday();
+
+        $currentQuery = http_build_query(array_filter(array_merge($filters, ['page' => $page > 1 ? $page : null])));
+
+        ob_start();
+        require dirname(__DIR__, 2) . '/views/admin/_guest_rows.php';
+        $tableHtml = (string) ob_get_clean();
+
+        $signature = sha1(json_encode([
+            'today' => $stats['today'],
+            'active' => $stats['active'],
+            'month' => $stats['month'],
+            'total' => $stats['total'],
+            'filtered' => $totalRows,
+            'rows' => array_map(
+                fn($r) => [$r['id'], $r['status'], $r['waktu_keluar']],
+                $guestList
+            ),
+        ]));
+
+        Helpers::json([
+            'success' => true,
+            'latest_id' => $latestGuest ? (int) $latestGuest['id'] : 0,
+            'latest_guest' => $latestGuest ? [
+                'id' => (int) $latestGuest['id'],
+                'nama_lengkap' => $latestGuest['nama_lengkap'],
+                'instansi' => $latestGuest['instansi'],
+                'tujuan' => $latestGuest['tujuan'],
+                'waktu_masuk' => Helpers::formatTanggalIndo($latestGuest['waktu_masuk']),
+            ] : null,
+            'stats' => [
+                'today' => (int) $stats['today'],
+                'active' => (int) $stats['active'],
+                'month' => (int) $stats['month'],
+                'total' => (int) $stats['total'],
+                'filtered_total' => $totalRows,
+            ],
+            'signature' => $signature,
+            'table_html' => $tableHtml,
+        ]);
+    }
+
+    private function extractFilters(): array
+    {
+        return [
+            'search' => trim((string) ($_GET['q'] ?? $_GET['search'] ?? '')),
+            'status' => trim((string) ($_GET['status'] ?? '')),
+            'tujuan' => trim((string) ($_GET['tujuan'] ?? '')),
+            'date_from' => trim((string) ($_GET['from'] ?? $_GET['date_from'] ?? '')),
+            'date_to' => trim((string) ($_GET['to'] ?? $_GET['date_to'] ?? '')),
+        ];
     }
 
     public function checkoutGuest(): void

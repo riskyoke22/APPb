@@ -9,7 +9,9 @@ require dirname(__DIR__) . '/layouts/header.php';
 <header class="topbar">
   <div class="topbar-inner">
     <a href="/" class="brand">
-      <img src="/assets/img/bdi-logo.svg" alt="Logo BDI Surabaya" class="brand-logo">
+      <div class="brand-logo-wrap">
+        <img src="/assets/img/logo-bdi.png" alt="Logo BDI Surabaya" class="brand-logo">
+      </div>
       <div>
         <div class="brand-title">BDI Surabaya</div>
         <div class="brand-sub">Kementerian Perindustrian RI</div>
@@ -21,8 +23,7 @@ require dirname(__DIR__) . '/layouts/header.php';
         <span class="pulse-dot"></span>
         <span id="liveWibClock">Memuat waktu...</span>
       </div>
-      <a href="/checkout" class="btn btn-outline btn-sm">Check-Out Tamu</a>
-      <a href="/admin" class="btn btn-soft btn-sm">Panel Admin</a>
+      <a href="/checkout" class="btn btn-primary btn-sm">Check-Out Tamu</a>
     </div>
   </div>
 </header>
@@ -62,21 +63,35 @@ require dirname(__DIR__) . '/layouts/header.php';
       <p class="panel-subtitle">Posisikan wajah Anda di dalam bingkai oval lalu tekan tombol ambil foto.</p>
 
       <div class="camera-stage">
-        <video id="cameraVideo" class="mirror" autoplay playsinline muted></video>
+        <div id="cameraStandby" class="camera-standby">
+          <div class="standby-icon-ring">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <div class="standby-title">Kamera Standby</div>
+          <p class="standby-desc">Klik tombol di bawah untuk mengaktifkan kamera dan mengambil foto wajah Anda.</p>
+          <button type="button" id="btnActivateCamera" class="btn btn-primary">
+            Aktifkan Kamera
+          </button>
+        </div>
+
+        <video id="cameraVideo" class="mirror" autoplay playsinline muted style="display: none;"></video>
         <img id="capturedPreview" class="captured-preview" alt="Hasil Foto Wajah" style="display: none;">
         <canvas id="cameraCanvas" style="display: none;"></canvas>
 
-        <div id="faceOverlay" class="face-guide-overlay">
+        <div id="faceOverlay" class="face-guide-overlay" style="display: none;">
           <div class="face-oval"></div>
         </div>
 
-        <div class="viewfinder-corners" aria-hidden="true">
+        <div id="viewfinderCorners" class="viewfinder-corners" aria-hidden="true" style="display: none;">
           <span></span><span></span><span></span><span></span>
         </div>
 
         <div class="camera-status-badge">
-          <span class="pulse-dot"></span>
-          <span id="cameraStatusText">Menghubungkan kamera...</span>
+          <span class="pulse-dot" id="cameraStatusDot"></span>
+          <span id="cameraStatusText">Kamera Standby</span>
         </div>
 
         <div id="countdownOverlay" class="countdown-overlay" style="display: none;">3</div>
@@ -84,13 +99,13 @@ require dirname(__DIR__) . '/layouts/header.php';
       </div>
 
       <div class="camera-controls">
-        <button type="button" id="btnCapture" class="btn btn-primary">
+        <button type="button" id="btnCapture" class="btn btn-primary" style="display: none;">
           Ambil Foto
         </button>
-        <button type="button" id="btnTimerCapture" class="btn btn-soft">
+        <button type="button" id="btnTimerCapture" class="btn btn-soft" style="display: none;">
           Timer 3 Detik
         </button>
-        <button type="button" id="btnSwitchCam" class="btn btn-outline">
+        <button type="button" id="btnSwitchCam" class="btn btn-outline" style="display: none;">
           Putar Kamera
         </button>
         <button type="button" id="btnRetake" class="btn btn-outline" style="display: none;">
@@ -198,7 +213,10 @@ require dirname(__DIR__) . '/layouts/header.php';
     <div class="visit-code-box">
       <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.08em;">Kode Kunjungan Resmi</div>
       <div id="passCode" class="visit-code-value">BDI-00000000-XXXX</div>
-      <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.25rem;">Simpan kode ini untuk Check-Out saat selesai berkunjung.</div>
+      <div class="pass-qr-wrap">
+        <div id="passQrCode" class="pass-qr-box" aria-label="QR Code Kode Kunjungan"></div>
+      </div>
+      <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 0.35rem;">Tunjukkan atau pindai QR Code ini saat Check-Out.</div>
     </div>
 
     <div class="pass-ticket-divider" aria-hidden="true"></div>
@@ -210,11 +228,13 @@ require dirname(__DIR__) . '/layouts/header.php';
       <div><span>Waktu Masuk</span><strong id="passTime"></strong></div>
     </div>
 
-    <div style="display: flex; gap: 0.65rem; margin-top: 1.25rem;">
+    <div style="display: flex; gap: 0.65rem; margin-top: 1.25rem; flex-wrap: wrap;">
+      <button type="button" id="btnDownloadPass" class="btn btn-soft" style="flex: 1;">Simpan QR / Pass</button>
       <button type="button" id="btnCloseSuccessModal" class="btn btn-primary" style="flex: 1;">Selesai</button>
     </div>
   </div>
 </div>
 
-<script src="/assets/js/checkin.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="/assets/js/checkin.js?v=20261125-2"></script>
 <?php require dirname(__DIR__) . '/layouts/footer.php'; ?>

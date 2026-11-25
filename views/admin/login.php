@@ -9,7 +9,7 @@ require dirname(__DIR__) . '/layouts/header.php';
 <main class="container" style="min-height: 100vh; display: flex; align-items: center; justify-content: center;">
   <div class="glass-card panel-card animate-in" style="width: 100%; max-width: 430px; padding: 2rem;">
     <div style="text-align: center; margin-bottom: 1.5rem;">
-      <img src="/assets/img/bdi-logo.svg" alt="Logo BDI Surabaya" style="width: 58px; height: 58px; margin-bottom: 0.75rem;">
+      <img src="/assets/img/logo-bdi.png" alt="Logo BDI Surabaya" style="width: 68px; height: 68px; object-fit: contain; margin-bottom: 0.75rem;">
       <h1 class="display-heading" style="margin: 0; font-size: 1.55rem;">Admin Panel BDI Surabaya</h1>
       <p style="margin: 0.3rem 0 0; font-size: 0.88rem; color: var(--text-muted);">
         Masuk untuk mengelola data tamu &amp; laporan kehadiran

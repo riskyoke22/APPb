@@ -1,14 +1,17 @@
 (() => {
+  const standbyBox = document.getElementById('cameraStandby');
   const video = document.getElementById('cameraVideo');
   const canvas = document.getElementById('cameraCanvas');
   const preview = document.getElementById('capturedPreview');
   const faceOverlay = document.getElementById('faceOverlay');
+  const viewfinderCorners = document.getElementById('viewfinderCorners');
   const statusBadge = document.getElementById('cameraStatusText');
   const countdownEl = document.getElementById('countdownOverlay');
   const shutterFlash = document.getElementById('shutterFlash');
   const fallbackBox = document.getElementById('cameraFallback');
   const fallbackInput = document.getElementById('fotoFileFallback');
 
+  const btnActivateCamera = document.getElementById('btnActivateCamera');
   const btnCapture = document.getElementById('btnCapture');
   const btnTimerCapture = document.getElementById('btnTimerCapture');
   const btnRetake = document.getElementById('btnRetake');
@@ -21,13 +24,18 @@
 
   const successModal = document.getElementById('successModal');
   const btnCloseModal = document.getElementById('btnCloseSuccessModal');
+  const btnDownloadPass = document.getElementById('btnDownloadPass');
+  const passQrContainer = document.getElementById('passQrCode');
 
   let currentStream = null;
   let facingMode = 'user';
-  let isCaptured = false;
   let fallbackObjectUrl = null;
   let fallbackReadPromise = null;
   let modalObjectUrl = null;
+  let idleTimer = null;
+  let lastPassData = null;
+
+  const IDLE_TIMEOUT_MS = 60000;
 
   function revokeUrl(url) {
     if (url && url.startsWith('blob:')) {
@@ -45,19 +53,58 @@
     }, 3600);
   }
 
-  async function startCamera() {
+  function clearIdleTimer() {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+  }
+
+  function resetIdleTimer() {
+    clearIdleTimer();
+    if (!currentStream) return;
+    idleTimer = setTimeout(() => {
+      stopCameraStream();
+      setStandbyView();
+      showToast('Kamera kembali ke mode standby karena tidak ada aktivitas.', 'error');
+    }, IDLE_TIMEOUT_MS);
+  }
+
+  function stopCameraStream() {
+    clearIdleTimer();
     if (currentStream) {
       currentStream.getTracks().forEach((t) => t.stop());
       currentStream = null;
     }
+    if (video) {
+      video.srcObject = null;
+    }
+  }
+
+  function setStandbyView() {
+    if (standbyBox) standbyBox.style.display = 'flex';
+    if (video) video.style.display = 'none';
+    if (preview) preview.style.display = 'none';
+    if (faceOverlay) faceOverlay.style.display = 'none';
+    if (viewfinderCorners) viewfinderCorners.style.display = 'none';
+    if (statusBadge) statusBadge.textContent = 'Kamera Standby';
+    if (btnCapture) btnCapture.style.display = 'none';
+    if (btnTimerCapture) btnTimerCapture.style.display = 'none';
+    if (btnSwitchCam) btnSwitchCam.style.display = 'none';
+    if (btnRetake) btnRetake.style.display = 'none';
+  }
+
+  async function startCamera() {
+    stopCameraStream();
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       if (statusBadge) statusBadge.textContent = 'Kamera butuh HTTPS / upload manual';
       if (fallbackBox) fallbackBox.style.display = 'block';
-      if (btnCapture) btnCapture.disabled = true;
-      if (btnTimerCapture) btnTimerCapture.disabled = true;
+      showToast('Browser memblokir kamera (butuh HTTPS). Silakan unggah foto manual.', 'error');
       return;
     }
+
+    if (statusBadge) statusBadge.textContent = 'Menghubungkan kamera...';
 
     try {
       currentStream = await navigator.mediaDevices.getUserMedia({
@@ -71,15 +118,28 @@
 
       video.srcObject = currentStream;
       video.classList.toggle('mirror', facingMode === 'user');
+
+      if (standbyBox) standbyBox.style.display = 'none';
+      preview.style.display = 'none';
+      video.style.display = 'block';
+      if (faceOverlay) faceOverlay.style.display = 'flex';
+      if (viewfinderCorners) viewfinderCorners.style.display = 'block';
       if (statusBadge) statusBadge.textContent = 'Kamera Aktif';
       if (fallbackBox) fallbackBox.style.display = 'none';
-      if (btnCapture) btnCapture.disabled = false;
-      if (btnTimerCapture) btnTimerCapture.disabled = false;
+
+      btnCapture.style.display = 'inline-flex';
+      btnTimerCapture.style.display = 'inline-flex';
+      btnSwitchCam.style.display = 'inline-flex';
+      btnCapture.disabled = false;
+      btnTimerCapture.disabled = false;
+      btnSwitchCam.disabled = false;
+      btnRetake.style.display = 'none';
+
+      resetIdleTimer();
     } catch (err) {
       if (statusBadge) statusBadge.textContent = 'Akses kamera ditolak';
       if (fallbackBox) fallbackBox.style.display = 'block';
-      if (btnCapture) btnCapture.disabled = true;
-      if (btnTimerCapture) btnTimerCapture.disabled = true;
+      showToast('Akses kamera ditolak atau tidak tersedia. Gunakan unggah foto manual.', 'error');
     }
   }
 
@@ -112,20 +172,23 @@
     fotoBase64Input.value = dataUrl;
     preview.src = dataUrl;
 
+    // Auto-stop camera stream immediately after capture
+    stopCameraStream();
+
+    if (standbyBox) standbyBox.style.display = 'none';
     preview.style.display = 'block';
     video.style.display = 'none';
     if (faceOverlay) faceOverlay.style.display = 'none';
+    if (viewfinderCorners) viewfinderCorners.style.display = 'none';
     if (statusBadge) statusBadge.textContent = 'Foto Tersimpan';
 
     btnCapture.style.display = 'none';
     btnTimerCapture.style.display = 'none';
     btnSwitchCam.style.display = 'none';
     btnRetake.style.display = 'inline-flex';
-    isCaptured = true;
   }
 
   function retakePhoto() {
-    isCaptured = false;
     fotoBase64Input.value = '';
     if (fallbackInput) fallbackInput.value = '';
     fallbackReadPromise = null;
@@ -134,33 +197,25 @@
     }
     fallbackObjectUrl = null;
 
-    preview.style.display = 'none';
-    if (statusBadge) statusBadge.textContent = currentStream ? 'Kamera Aktif' : 'Mode Upload';
+    stopCameraStream();
+    setStandbyView();
+  }
 
-    if (currentStream) {
-      video.style.display = 'block';
-      if (faceOverlay) faceOverlay.style.display = 'flex';
-      btnCapture.style.display = 'inline-flex';
-      btnTimerCapture.style.display = 'inline-flex';
-      btnSwitchCam.style.display = 'inline-flex';
-    } else {
-      video.style.display = 'none';
-      if (faceOverlay) faceOverlay.style.display = 'none';
-      btnCapture.style.display = 'none';
-      btnTimerCapture.style.display = 'none';
-      btnSwitchCam.style.display = 'none';
-      if (fallbackBox) fallbackBox.style.display = 'block';
-    }
-    btnRetake.style.display = 'none';
+  if (btnActivateCamera) {
+    btnActivateCamera.addEventListener('click', startCamera);
   }
 
   if (btnCapture) {
-    btnCapture.addEventListener('click', capturePhoto);
+    btnCapture.addEventListener('click', () => {
+      resetIdleTimer();
+      capturePhoto();
+    });
   }
 
   if (btnTimerCapture) {
     btnTimerCapture.addEventListener('click', () => {
       if (!video || !video.videoWidth) return;
+      clearIdleTimer();
       btnTimerCapture.disabled = true;
       btnCapture.disabled = true;
       if (btnSwitchCam) btnSwitchCam.disabled = true;
@@ -237,23 +292,129 @@
         return;
       }
 
+      stopCameraStream();
       revokeUrl(fallbackObjectUrl);
       fallbackObjectUrl = URL.createObjectURL(file);
+      if (standbyBox) standbyBox.style.display = 'none';
       preview.src = fallbackObjectUrl;
       preview.style.display = 'block';
       video.style.display = 'none';
       if (faceOverlay) faceOverlay.style.display = 'none';
+      if (viewfinderCorners) viewfinderCorners.style.display = 'none';
       if (statusBadge) statusBadge.textContent = 'Foto Tersimpan';
       btnCapture.style.display = 'none';
       btnTimerCapture.style.display = 'none';
       btnSwitchCam.style.display = 'none';
       btnRetake.style.display = 'inline-flex';
-      isCaptured = true;
 
       fallbackReadPromise = compressImageFile(file).then((dataUrl) => {
         fotoBase64Input.value = dataUrl || '';
       });
     });
+  }
+
+  function renderQrCode(codeText) {
+    if (!passQrContainer) return;
+    passQrContainer.replaceChildren();
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(passQrContainer, {
+        text: codeText,
+        width: 136,
+        height: 136,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
+  }
+
+  function downloadPassImage() {
+    if (!lastPassData) return;
+
+    const qrCanvas = passQrContainer?.querySelector('canvas');
+    const qrImg = passQrContainer?.querySelector('img');
+    const qrSource = qrCanvas || qrImg;
+
+    const cardCanvas = document.createElement('canvas');
+    cardCanvas.width = 640;
+    cardCanvas.height = 760;
+    const ctx = cardCanvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ebf0f5';
+    ctx.fillRect(0, 0, 640, 760);
+
+    // Inner Card
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(28, 28, 584, 704, 28);
+    ctx.fill();
+
+    // Header Ribbon
+    const grad = ctx.createLinearGradient(28, 28, 612, 92);
+    grad.addColorStop(0, '#1d4ed8');
+    grad.addColorStop(1, '#2563eb');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(28, 28, 584, 68, [28, 28, 0, 0]);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('VISITOR PASS • BDI SURABAYA', 56, 68);
+
+    // Title & Code
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Kehadiran Tercatat', 320, 145);
+
+    ctx.fillStyle = '#2563eb';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText(lastPassData.kode_kunjungan, 320, 195);
+
+    // QR Code
+    if (qrSource) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.roundRect(205, 222, 230, 230, 18);
+      ctx.fill();
+      ctx.drawImage(qrSource, 220, 237, 200, 200);
+    }
+
+    // Visitor Details
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath();
+    ctx.roundRect(56, 480, 528, 200, 18);
+    ctx.fill();
+
+    const rows = [
+      ['Nama', lastPassData.nama_lengkap],
+      ['Instansi', lastPassData.instansi],
+      ['Tujuan', lastPassData.tujuan],
+      ['Waktu Masuk', lastPassData.waktu_masuk],
+    ];
+    rows.forEach(([label, val], idx) => {
+      const y = 522 + idx * 42;
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 16px sans-serif';
+      ctx.fillText(label, 80, y);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 16px sans-serif';
+      const textVal = String(val || '-').slice(0, 34);
+      ctx.fillText(textVal, 215, y);
+    });
+
+    const link = document.createElement('a');
+    link.download = `visitor-pass-${lastPassData.kode_kunjungan}.png`;
+    link.href = cardCanvas.toDataURL('image/png');
+    link.click();
+  }
+
+  if (btnDownloadPass) {
+    btnDownloadPass.addEventListener('click', downloadPassImage);
   }
 
   if (form) {
@@ -276,7 +437,6 @@
 
       try {
         const formData = new FormData(form);
-        // Send foto_file only if base64 conversion did not produce a value
         if (!fotoBase64Input.value && fallbackFile) {
           formData.append('foto_file', fallbackFile);
         }
@@ -292,7 +452,6 @@
           return;
         }
 
-        // Update live stats
         if (json.stats) {
           const elToday = document.getElementById('statToday');
           const elActive = document.getElementById('statActive');
@@ -300,7 +459,6 @@
           if (elActive) elActive.textContent = json.stats.active;
         }
 
-        // Populate success modal using local photo (base64 or object URL)
         revokeUrl(modalObjectUrl);
         modalObjectUrl = null;
         let passSrc = fotoBase64Input.value || '';
@@ -311,12 +469,15 @@
           passSrc = preview.src || '';
         }
 
+        lastPassData = json.data;
         document.getElementById('passPhoto').src = passSrc;
         document.getElementById('passCode').textContent = json.data.kode_kunjungan;
         document.getElementById('passName').textContent = json.data.nama_lengkap;
         document.getElementById('passInstansi').textContent = json.data.instansi;
         document.getElementById('passTujuan').textContent = json.data.tujuan;
         document.getElementById('passTime').textContent = json.data.waktu_masuk;
+
+        renderQrCode(json.data.kode_kunjungan);
 
         successModal.classList.add('open');
         form.reset();
@@ -333,8 +494,11 @@
   function closeSuccessModal() {
     successModal.classList.remove('open');
     document.getElementById('passPhoto').src = '';
+    if (passQrContainer) passQrContainer.replaceChildren();
     revokeUrl(modalObjectUrl);
     modalObjectUrl = null;
+    stopCameraStream();
+    setStandbyView();
   }
 
   if (btnCloseModal && successModal) {
@@ -346,5 +510,6 @@
     });
   }
 
-  startCamera();
+  window.addEventListener('beforeunload', stopCameraStream);
+  setStandbyView();
 })();

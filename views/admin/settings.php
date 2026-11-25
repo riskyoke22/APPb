@@ -9,7 +9,9 @@ require dirname(__DIR__) . '/layouts/header.php';
 <header class="topbar">
   <div class="topbar-inner">
     <a href="/admin" class="brand">
-      <img src="/assets/img/bdi-logo.svg" alt="Logo BDI Surabaya" class="brand-logo">
+      <div class="brand-logo-wrap">
+        <img src="/assets/img/logo-bdi.png" alt="Logo BDI Surabaya" class="brand-logo">
+      </div>
       <div>
         <div class="brand-title">Pengaturan Admin</div>
         <div class="brand-sub">BDI Surabaya</div>

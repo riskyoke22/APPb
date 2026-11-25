@@ -118,6 +118,19 @@ class GuestModel
         ];
     }
 
+    public function getLatestGuestToday(): ?array
+    {
+        $stmt = $this->db->query("
+            SELECT id, nama_lengkap, instansi, tujuan, waktu_masuk
+            FROM guests
+            WHERE DATE(waktu_masuk) = CURDATE()
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
     public function getDashboardStats(): array
     {
         $today = (int) $this->db->query("

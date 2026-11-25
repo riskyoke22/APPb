@@ -75,6 +75,7 @@ $router->get('/admin/login', fn() => $adminController->loginForm());
 $router->post('/admin/login', fn() => $adminController->loginSubmit());
 $router->get('/admin/logout', fn() => $adminController->logout());
 $router->get('/admin', fn() => $adminController->dashboard());
+$router->get('/api/admin/poll', fn() => $adminController->poll());
 $router->post('/admin/guest/checkout', fn() => $adminController->checkoutGuest());
 $router->post('/admin/guest/delete', fn() => $adminController->deleteGuest());
 $router->get('/admin/export', fn() => $adminController->exportCsv());
