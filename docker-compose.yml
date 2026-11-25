@@ -1,0 +1,56 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bdi_bukutamu_app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8085}:80"
+    environment:
+      APP_NAME: ${APP_NAME:-Buku Tamu BDI Surabaya}
+      APP_ENV: ${APP_ENV:-production}
+      TZ: ${APP_TIMEZONE:-Asia/Jakarta}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-buku_tamu_bdi}
+      DB_USER: ${DB_USER:-bdi_user}
+      DB_PASS: ${DB_PASS:-BdiSurabaya2026!}
+    volumes:
+      - ./storage/uploads:/var/www/html/storage/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - bdi_network
+
+  db:
+    image: mariadb:10.11
+    container_name: bdi_bukutamu_db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-buku_tamu_bdi}
+      MARIADB_USER: ${DB_USER:-bdi_user}
+      MARIADB_PASSWORD: ${DB_PASS:-BdiSurabaya2026!}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS:-BdiRoot2026!}
+      TZ: ${APP_TIMEZONE:-Asia/Jakarta}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - bdi_network
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  bdi_network:
+    driver: bridge

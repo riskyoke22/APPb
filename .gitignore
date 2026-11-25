@@ -1,0 +1,8 @@
+.env
+storage/uploads/photos/*
+!storage/uploads/photos/.gitkeep
+storage/ratelimit/*
+vendor/
+*.log
+.DS_Store
+Thumbs.db
