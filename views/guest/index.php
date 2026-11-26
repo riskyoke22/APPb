@@ -236,5 +236,5 @@ require dirname(__DIR__) . '/layouts/header.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="/assets/js/checkin.js?v=20261126"></script>
+<script src="/assets/js/checkin.js?v=20261126-2"></script>
 <?php require dirname(__DIR__) . '/layouts/footer.php'; ?>

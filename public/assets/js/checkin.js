@@ -477,6 +477,7 @@
       try {
         const formData = new FormData(form);
         formData.set('photo_data', photoPayload);
+        formData.set('foto_base64', photoPayload);
 
         const res = await fetch('/api/checkin', {
           method: 'POST',

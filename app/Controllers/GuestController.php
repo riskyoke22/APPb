@@ -44,14 +44,25 @@ class GuestController
             ], 429);
         }
 
-        $nama = trim((string) ($_POST['nama_lengkap'] ?? ''));
-        $instansi = trim((string) ($_POST['instansi'] ?? ''));
-        $noHp = trim((string) ($_POST['no_hp'] ?? ''));
-        $email = trim((string) ($_POST['email'] ?? ''));
-        $tujuan = trim((string) ($_POST['tujuan'] ?? ''));
-        $bertemuDengan = trim((string) ($_POST['bertemu_dengan'] ?? ''));
-        $keperluan = trim((string) ($_POST['keperluan'] ?? ''));
-        $fotoBase64 = (string) ($_POST['photo_data'] ?? $_POST['foto_base64'] ?? '');
+        $input = $_POST;
+        if (empty($input)) {
+            $rawBody = file_get_contents('php://input');
+            if (is_string($rawBody) && $rawBody !== '') {
+                $decoded = json_decode($rawBody, true);
+                if (is_array($decoded)) {
+                    $input = $decoded;
+                }
+            }
+        }
+
+        $nama = trim((string) ($input['nama_lengkap'] ?? ''));
+        $instansi = trim((string) ($input['instansi'] ?? ''));
+        $noHp = trim((string) ($input['no_hp'] ?? ''));
+        $email = trim((string) ($input['email'] ?? ''));
+        $tujuan = trim((string) ($input['tujuan'] ?? ''));
+        $bertemuDengan = trim((string) ($input['bertemu_dengan'] ?? ''));
+        $keperluan = trim((string) ($input['keperluan'] ?? ''));
+        $fotoBase64 = trim((string) ($input['photo_data'] ?? $input['photo'] ?? $input['foto_base64'] ?? ''));
 
         if ($nama === '' || $instansi === '' || $noHp === '' || $tujuan === '' || $keperluan === '') {
             Helpers::json(['success' => false, 'message' => 'Mohon lengkapi semua kolom yang wajib diisi.'], 422);
@@ -74,19 +85,31 @@ class GuestController
             Helpers::json(['success' => false, 'message' => 'Unit / tujuan kunjungan tidak valid.'], 422);
         }
 
-        // Save face photo (from base64 camera capture or fallback file upload)
-        $fotoRelPath = null;
-        if ($fotoBase64 !== '') {
-            $fotoRelPath = $this->saveBase64Photo($fotoBase64);
-        } elseif (!empty($_FILES['foto_file']['tmp_name'])) {
-            $fotoRelPath = $this->saveUploadedPhoto($_FILES['foto_file']);
-        }
-
-        if ($fotoRelPath === null) {
+        // Save face photo (from base64 camera capture / compressed upload, or fallback file upload)
+        $uploadedFile = $_FILES['foto_file'] ?? $_FILES['photo'] ?? null;
+        if ($fotoBase64 === '' && empty($uploadedFile['tmp_name'])) {
             Helpers::json([
                 'success' => false,
                 'message' => 'Foto wajah wajib diambil sebagai bukti kehadiran (maks. 8MB).',
             ], 422);
+        }
+
+        $photoError = null;
+        $fotoRelPath = null;
+        if ($fotoBase64 !== '') {
+            $fotoRelPath = $this->saveBase64Photo($fotoBase64, $photoError);
+        } elseif (!empty($uploadedFile['tmp_name'])) {
+            $fotoRelPath = $this->saveUploadedPhoto($uploadedFile, $photoError);
+        }
+
+        if ($fotoRelPath === null) {
+            $status = $photoError === 'storage_error' ? 500 : 422;
+            $msg = match ($photoError) {
+                'storage_error' => 'Gagal menyimpan file foto ke server. Periksa izin folder penyimpanan.',
+                'too_large' => 'Ukuran foto terlalu besar (maks. 8MB).',
+                default => 'Format foto tidak valid atau rusak. Silakan ambil ulang foto.',
+            };
+            Helpers::json(['success' => false, 'message' => $msg], $status);
         }
 
         $kode = '';
@@ -214,41 +237,58 @@ class GuestController
         exit;
     }
 
-    private function saveBase64Photo(string $base64): ?string
+    private function saveBase64Photo(string $base64, ?string &$errorCode = null): ?string
     {
-        if (!preg_match('/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/s', $base64, $matches)) {
+        if (!preg_match('/^data:image\/(jpeg|jpg|png|webp|gif)(?:;[^,]*)?;base64,(.+)$/is', $base64, $matches)) {
+            $errorCode = 'invalid_format';
             return null;
         }
 
-        $binary = base64_decode($matches[2], true);
-        if ($binary === false || strlen($binary) > 8 * 1024 * 1024) {
+        $encoded = preg_replace('/\s+/', '', $matches[2]) ?? '';
+        $binary = base64_decode($encoded, true);
+        if ($binary === false) {
+            $errorCode = 'invalid_format';
+            return null;
+        }
+        if (strlen($binary) > 8 * 1024 * 1024) {
+            $errorCode = 'too_large';
             return null;
         }
 
-        return $this->processAndSaveImage($binary);
+        return $this->processAndSaveImage($binary, $errorCode);
     }
 
-    private function saveUploadedPhoto(array $file): ?string
+    private function saveUploadedPhoto(array $file, ?string &$errorCode = null): ?string
     {
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $errorCode = 'invalid_format';
             return null;
         }
         if (($file['size'] ?? 0) > 8 * 1024 * 1024) {
+            $errorCode = 'too_large';
             return null;
         }
 
         $raw = @file_get_contents($file['tmp_name']);
         if ($raw === false) {
+            $errorCode = 'invalid_format';
             return null;
         }
 
-        return $this->processAndSaveImage($raw);
+        return $this->processAndSaveImage($raw, $errorCode);
     }
 
-    private function processAndSaveImage(string $binary): ?string
+    private function processAndSaveImage(string $binary, ?string &$errorCode = null): ?string
     {
+        if (!function_exists('imagecreatefromstring')) {
+            error_log('[BDI BukuTamu] PHP GD extension is not enabled.');
+            $errorCode = 'storage_error';
+            return null;
+        }
+
         $img = @imagecreatefromstring($binary);
         if ($img === false) {
+            $errorCode = 'invalid_format';
             return null;
         }
 
@@ -266,7 +306,9 @@ class GuestController
         $subDir = date('Y/m');
         $targetDir = $this->config['upload_dir'] . '/' . $subDir;
         if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            error_log('[BDI BukuTamu] Failed to create upload directory: ' . $targetDir);
             imagedestroy($img);
+            $errorCode = 'storage_error';
             return null;
         }
 
@@ -277,6 +319,8 @@ class GuestController
         imagedestroy($img);
 
         if (!$saved || !is_file($fullPath)) {
+            error_log('[BDI BukuTamu] Failed to write JPEG image to: ' . $fullPath);
+            $errorCode = 'storage_error';
             return null;
         }
 
