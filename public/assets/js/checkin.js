@@ -29,9 +29,8 @@
 
   let currentStream = null;
   let facingMode = 'user';
-  let fallbackObjectUrl = null;
+  let capturedPhotoData = '';
   let fallbackReadPromise = null;
-  let modalObjectUrl = null;
   let idleTimer = null;
   let lastPassData = null;
 
@@ -158,8 +157,17 @@
 
     triggerShutterEffect();
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const maxDim = 800;
+    let targetW = video.videoWidth;
+    let targetH = video.videoHeight;
+    if (targetW > maxDim || targetH > maxDim) {
+      const ratio = Math.min(maxDim / targetW, maxDim / targetH);
+      targetW = Math.round(targetW * ratio);
+      targetH = Math.round(targetH * ratio);
+    }
+
+    canvas.width = targetW;
+    canvas.height = targetH;
     const ctx = canvas.getContext('2d');
 
     if (facingMode === 'user') {
@@ -168,7 +176,8 @@
     }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+    capturedPhotoData = dataUrl;
     fotoBase64Input.value = dataUrl;
     preview.src = dataUrl;
 
@@ -189,13 +198,10 @@
   }
 
   function retakePhoto() {
+    capturedPhotoData = '';
     fotoBase64Input.value = '';
     if (fallbackInput) fallbackInput.value = '';
     fallbackReadPromise = null;
-    if (fallbackObjectUrl && fallbackObjectUrl !== modalObjectUrl) {
-      revokeUrl(fallbackObjectUrl);
-    }
-    fallbackObjectUrl = null;
 
     stopCameraStream();
     setStandbyView();
@@ -258,29 +264,53 @@
   }
 
   function compressImageFile(file) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const tempUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(tempUrl);
-        const maxDim = 1280;
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const ratio = Math.min(maxDim / width, maxDim / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
+    return new Promise((resolve, reject) => {
+      if (file.type && !file.type.startsWith('image/')) {
+        reject(new Error('Format file harus berupa gambar (JPG, PNG, atau WEBP).'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        reject(new Error('Gagal membaca file gambar dari perangkat.'));
+      };
+      reader.onload = (ev) => {
+        const rawDataUrl = typeof ev.target?.result === 'string' ? ev.target.result : '';
+        if (!rawDataUrl) {
+          reject(new Error('Data gambar kosong atau tidak valid.'));
+          return;
         }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.88));
+
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 800;
+          let { width, height } = img;
+          if (!width || !height) {
+            reject(new Error('Dimensi gambar tidak valid.'));
+            return;
+          }
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.78);
+          if (!compressed || !compressed.startsWith('data:image/jpeg')) {
+            reject(new Error('Gagal mengompresi foto ke format JPEG.'));
+            return;
+          }
+          resolve(compressed);
+        };
+        img.onerror = () => {
+          reject(new Error('File bukan gambar yang valid atau format tidak didukung browser.'));
+        };
+        img.src = rawDataUrl;
       };
-      img.onerror = () => {
-        URL.revokeObjectURL(tempUrl);
-        resolve('');
-      };
-      img.src = tempUrl;
+      reader.readAsDataURL(file);
     });
   }
 
@@ -293,23 +323,32 @@
       }
 
       stopCameraStream();
-      revokeUrl(fallbackObjectUrl);
-      fallbackObjectUrl = URL.createObjectURL(file);
-      if (standbyBox) standbyBox.style.display = 'none';
-      preview.src = fallbackObjectUrl;
-      preview.style.display = 'block';
-      video.style.display = 'none';
-      if (faceOverlay) faceOverlay.style.display = 'none';
-      if (viewfinderCorners) viewfinderCorners.style.display = 'none';
-      if (statusBadge) statusBadge.textContent = 'Foto Tersimpan';
-      btnCapture.style.display = 'none';
-      btnTimerCapture.style.display = 'none';
-      btnSwitchCam.style.display = 'none';
-      btnRetake.style.display = 'inline-flex';
+      if (statusBadge) statusBadge.textContent = 'Memproses foto...';
 
-      fallbackReadPromise = compressImageFile(file).then((dataUrl) => {
-        fotoBase64Input.value = dataUrl || '';
-      });
+      fallbackReadPromise = compressImageFile(file)
+        .then((dataUrl) => {
+          capturedPhotoData = dataUrl;
+          fotoBase64Input.value = dataUrl;
+
+          if (standbyBox) standbyBox.style.display = 'none';
+          preview.src = dataUrl;
+          preview.style.display = 'block';
+          video.style.display = 'none';
+          if (faceOverlay) faceOverlay.style.display = 'none';
+          if (viewfinderCorners) viewfinderCorners.style.display = 'none';
+          if (statusBadge) statusBadge.textContent = 'Foto Tersimpan';
+          btnCapture.style.display = 'none';
+          btnTimerCapture.style.display = 'none';
+          btnSwitchCam.style.display = 'none';
+          btnRetake.style.display = 'inline-flex';
+        })
+        .catch((err) => {
+          capturedPhotoData = '';
+          fotoBase64Input.value = '';
+          fallbackInput.value = '';
+          setStandbyView();
+          showToast(err?.message || 'Gagal memproses gambar yang dipilih.', 'error');
+        });
     });
   }
 
@@ -425,9 +464,9 @@
         await fallbackReadPromise;
       }
 
-      const fallbackFile = fallbackInput?.files?.[0] || null;
-      if (!fotoBase64Input.value && !fallbackFile) {
-        showToast('Silakan ambil foto wajah terlebih dahulu sebagai bukti kehadiran.', 'error');
+      const photoPayload = capturedPhotoData || fotoBase64Input.value;
+      if (!photoPayload) {
+        showToast('Silakan ambil foto wajah atau unggah foto yang valid terlebih dahulu.', 'error');
         return;
       }
 
@@ -437,9 +476,7 @@
 
       try {
         const formData = new FormData(form);
-        if (!fotoBase64Input.value && fallbackFile) {
-          formData.append('foto_file', fallbackFile);
-        }
+        formData.set('photo_data', photoPayload);
 
         const res = await fetch('/api/checkin', {
           method: 'POST',
@@ -459,15 +496,7 @@
           if (elActive) elActive.textContent = json.stats.active;
         }
 
-        revokeUrl(modalObjectUrl);
-        modalObjectUrl = null;
-        let passSrc = fotoBase64Input.value || '';
-        if (!passSrc && fallbackFile) {
-          modalObjectUrl = URL.createObjectURL(fallbackFile);
-          passSrc = modalObjectUrl;
-        } else if (!passSrc) {
-          passSrc = preview.src || '';
-        }
+        const passSrc = photoPayload || preview.src || '';
 
         lastPassData = json.data;
         document.getElementById('passPhoto').src = passSrc;
@@ -495,8 +524,6 @@
     successModal.classList.remove('open');
     document.getElementById('passPhoto').src = '';
     if (passQrContainer) passQrContainer.replaceChildren();
-    revokeUrl(modalObjectUrl);
-    modalObjectUrl = null;
     stopCameraStream();
     setStandbyView();
   }

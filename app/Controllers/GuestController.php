@@ -51,7 +51,7 @@ class GuestController
         $tujuan = trim((string) ($_POST['tujuan'] ?? ''));
         $bertemuDengan = trim((string) ($_POST['bertemu_dengan'] ?? ''));
         $keperluan = trim((string) ($_POST['keperluan'] ?? ''));
-        $fotoBase64 = (string) ($_POST['foto_base64'] ?? '');
+        $fotoBase64 = (string) ($_POST['photo_data'] ?? $_POST['foto_base64'] ?? '');
 
         if ($nama === '' || $instansi === '' || $noHp === '' || $tujuan === '' || $keperluan === '') {
             Helpers::json(['success' => false, 'message' => 'Mohon lengkapi semua kolom yang wajib diisi.'], 422);
@@ -252,6 +252,17 @@ class GuestController
             return null;
         }
 
+        // Auto-resize to max width 720px (preserving aspect ratio) for lightweight storage
+        $origWidth = imagesx($img);
+        $origHeight = imagesy($img);
+        if ($origWidth > 720 && $origHeight > 0) {
+            $scaled = @imagescale($img, 720, -1, IMG_BICUBIC);
+            if ($scaled !== false) {
+                imagedestroy($img);
+                $img = $scaled;
+            }
+        }
+
         $subDir = date('Y/m');
         $targetDir = $this->config['upload_dir'] . '/' . $subDir;
         if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
@@ -262,7 +273,7 @@ class GuestController
         $filename = 'tamu_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.jpg';
         $fullPath = $targetDir . '/' . $filename;
 
-        $saved = @imagejpeg($img, $fullPath, 88);
+        $saved = @imagejpeg($img, $fullPath, 75);
         imagedestroy($img);
 
         if (!$saved || !is_file($fullPath)) {

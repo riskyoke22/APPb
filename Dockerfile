@@ -34,8 +34,8 @@ RUN printf '<Directory /var/www/html/public>\n\
     && a2enconf bdi-public
 
 # PHP production settings for photo uploads
-RUN printf 'upload_max_filesize = 10M\n\
-post_max_size = 12M\n\
+RUN printf 'upload_max_filesize = 16M\n\
+post_max_size = 16M\n\
 memory_limit = 256M\n\
 date.timezone = Asia/Jakarta\n\
 session.cookie_httponly = 1\n\

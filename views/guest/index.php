@@ -142,7 +142,7 @@ require dirname(__DIR__) . '/layouts/header.php';
 
       <form id="checkinForm" enctype="multipart/form-data">
         <?= Csrf::field() ?>
-        <input type="hidden" id="fotoBase64" name="foto_base64" value="">
+        <input type="hidden" id="fotoBase64" name="photo_data" value="">
 
         <div class="form-grid">
           <div class="form-group">
@@ -236,5 +236,5 @@ require dirname(__DIR__) . '/layouts/header.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="/assets/js/checkin.js?v=20261125-2"></script>
+<script src="/assets/js/checkin.js?v=20261126"></script>
 <?php require dirname(__DIR__) . '/layouts/footer.php'; ?>
